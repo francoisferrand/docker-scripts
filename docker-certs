@@ -1,0 +1,156 @@
+#!/bin/bash -e
+
+# TODO:
+# - automically configure docker daemon for SSL [if needed], both through systemd and in /etc/default/docker
+# - option to 'install' the server certificate in /etc/ssl/docker@$HOST/ ?
+#             'install' the client certificate in ~/.docker or docker-env ?
+# - automatically 'refresh' certificate only if expired ?
+# - option to read existing certificates and display the expiry dates and CN/DNS/IP associated with certificate
+
+CA=ca.pem
+CA_KEY=ca-key.pem
+CA_PASSWORD=
+CLIENT=cert.pem
+CLIENT_KEY=key.pem
+SERVER=server-cert.pem
+SERVER_KEY=server-key.pem
+HOST=$(hostname)
+DURATION=365
+
+function help() {
+	echo "Usage: docker-certs [<OPTIONS>] <HOSTNAME>"
+	echo ""
+	echo "This tool will generate certificates to secure connection to Docker daemon, as docuement"
+	echo "here: https://docs.docker.com/engine/security/https/"
+	echo ""
+	echo "Options"
+	echo "  -C                  Change the directory where the files will be generated."
+	echo "  --CA <path>         Path the CA certificate file (default: ca.pem)"
+	echo "  --CAkey <path>      Path the CA key file (default: ca-key.pem)"
+	echo "  --CApass <password> Password of the CA file"
+	echo "  --refreshCA         Force re-creating a CA certificate, even if it already exist (default: false)"
+	echo "  --noclient          Do not generate a client certificate (default: false)"
+	echo "  --noserver          Do not generate a server certificate (default: false)"
+	echo "  --swarmnode         Generate server certificate suitable for (legacy) swarm nodes (default: false)"
+	echo "  --duration 	        Specify the duration of the certificate (in days)"
+	echo ""
+	echo "Existing keys will be re-used if possible. By default, the CA certificate is used as well."
+	exit 0
+}
+
+function createCACert() {
+	if [ ! -e $CA_KEY ]; then
+		openssl genrsa -aes256 -out $CA_KEY -passout file:<( echo -n $CA_PASSWORD )
+		chmod 0400 $CA_KEY
+	fi
+
+	if [ -e $CA ]; then
+		rm -f $CA
+	fi
+	openssl req -new -x509 -days $DURATION -key $CA_KEY -sha256 -out $CA -passin file:<( echo -n $CA_PASSWORD )
+	chmod 0444 $CA
+}
+
+function createClientCert() {
+	if [ ! -e $CLIENT_KEY ]; then
+		openssl genrsa -out $CLIENT_KEY 4096
+		chmod 0400 $CLIENT_KEY
+	fi
+
+	openssl req -subj '/CN=client' -new -key $CLIENT_KEY -out client.csr
+	echo extendedKeyUsage = clientAuth > extfile.cnf
+
+	if [ -e $CLIENT ]; then
+		rm -f $CLIENT
+	fi
+	openssl x509 -req -days $DURATION -sha256 -in client.csr -CA $CA -CAkey $CA_KEY -CAcreateserial \
+		-out $CLIENT -extfile extfile.cnf -passin file:<( echo -n $CA_PASSWORD )
+	chmod 0444 $CLIENT
+	rm client.csr extfile.cnf
+}
+
+function createServerCert() {
+	if [ ! -e $SERVER_KEY ]; then
+		openssl genrsa -out $SERVER_KEY 4096
+		chmod 0400 $SERVER_KEY
+	fi
+
+	openssl req -subj "/CN=$HOST" -sha256 -new -key $SERVER_KEY -out server.csr
+	echo subjectAltName = $(getAltNames $HOST),IP:127.0.0.1 > extfile.cnf
+	if [ $1 ]; then
+		echo "extendedKeyUsage = clientAuth,serverAuth" >> extfile.cnf
+	fi
+
+	if [ -e $SERVER ]; then
+		rm -f $SERVER
+	fi
+	openssl x509 -req -days $DURATION -sha256 -in server.csr -CA $CA -CAkey $CA_KEY -CAcreateserial \
+		-out $SERVER -extfile extfile.cnf -passin file:<( echo -n $CA_PASSWORD )
+	chmod 0444 $SERVER
+	rm server.csr extfile.cnf
+}
+
+function getAltNames() {
+	getent hosts $1 | awk '{ for (i=2; i<=NF; i++) printf "DNS:%s,", $i ; printf "IP:%s", $0 }'
+}
+
+FORCE_CREATE_CA=
+CREATE_CLIENT=true
+CREATE_SERVER=true
+SWARM_NODE=
+while [[ $# > 0 ]]; do
+  case "$1" in
+  -C) # Change working directory
+	shift
+	cd $1
+	;;
+  --CA)
+	shift
+	CA=$1
+	;;
+  --CAkey)
+  	shift
+	CA_KEY=$1
+	;;
+  --CApass)
+  	shift
+	CA_PASSWORD=$1
+	;;
+  --refreshCA)
+	FORCE_CREATE_CA=true
+	;;
+  --noclient) # Do not generate client certificate/key
+	CREATE_CLIENT=
+	;;
+  --noserver) # Do not generate server certificate/key
+	CREATE_SERVER=
+	;;
+  --swarmnode) # Generate server certificate suitable for Swarm nodes
+	SWARM_NODE=true
+	;;
+  --duration)
+	shift
+	DURATION=$1
+	;;
+  --help)
+	help
+	;;
+  *)
+	HOST=$1
+	;;
+  esac
+  shift
+done
+
+if [ ! $CA_PASSWORD ]; then
+   read -s -p "Enter pass phrase for $CA_KEY: " CA_PASSWORD
+fi
+if [ ! -f $CA ] || [ ! -f $CA_KEY ] || [ $FORCE_CREATE_CA ]; then
+	createCACert
+fi
+if [ $CREATE_CLIENT ]; then
+	createClientCert
+fi
+if [ $CREATE_SERVER ]; then
+	createServerCert $SWARM_NODE
+fi
