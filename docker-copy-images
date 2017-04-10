@@ -1,0 +1,98 @@
+#!/bin/bash -e
+
+function show_usage {
+  echo "Import all images from one registry to another."
+  echo ""
+  echo "Usage:"
+  echo "  $SCRIPT_NAME [options] <source registry> <dest registry>"
+  echo ""
+  echo "Options:"
+  echo "  -r <regexp>, --repository <regexp>    Import only repositories matching the regular expression"
+  echo "  -R <regexp>, --norepository <regexp>  Skip repositories matching the regular expression"
+  echo "  -t <regexp>, --tag <regexp>           Import only tags matching the regular expression"
+  echo "  -T <regexp>, --notag <regexp>         Skip tags matching the regular expression"
+  echo "  -c <pattern>, --convert <pattern>     Apply the pattern to rename the repository on import"
+  echo "  -n, --dry-run                         Don't actually import any repository; just print them."
+  echo "  -v, --verbose                         Show docker commands output."
+  echo
+  echo "Example:"
+  echo "  $SCRIPT_NAME -c '#foo-#bar/#' -r 'stuff-' -T '123|112|-' https://old.registry.biz:5000 https://new.registry.biz:5000"
+}
+
+function sync_images {
+  for REPOSITORY in $(curl -ksX GET ${SRCREGISTRY}/v2/_catalog | eval jq -r '.repositories[]' ${REPO_FILTER}) ; do
+    for TAG in $(curl -ksX GET ${SRCREGISTRY}/v2/$REPOSITORY/tags/list | eval jq -r '.tags[]' ${TAG_FILTER} | sort) ; do
+      SOURCE=${SRCREGISTRY/https:\/\//}/$REPOSITORY:$TAG
+	  DEST=${DESTREGISTRY/https:\/\//}/$(echo $REPOSITORY | eval sed $CONVERT):$TAG
+      echo "$SOURCE --> $DEST"
+	  if [ ! "$DRYRUN" ]; then
+        docker pull $SOURCE      | eval $OUTPUTFILTER
+        docker tag $SOURCE $DEST | eval $OUTPUTFILTER
+        docker push $DEST        | eval $OUTPUTFILTER
+        docker rmi $SOURCE $DEST | eval $OUTPUTFILTER
+      fi
+    done
+  done
+}
+
+SRCREGISTRY=
+DESTREGISTRY=
+REPO_FILTER=
+TAG_FILTER=
+CONVERT="-e ''"
+DRYRUN=
+OUTPUTFILTER='cat > /dev/null'
+SCRIPT_NAME=$(basename "$0")
+
+while [[ "$#" > 0 ]] ; do
+  case "$1" in
+  -r|--repository)
+    REPO_FILTER="$REPO_FILTER | grep -E '$2'"
+    shift # past argument
+    ;;
+  -R|--norepository)
+	REPO_FILTER="$REPO_FILTER | grep -Ev '$2'"
+    shift # past argument
+    ;;
+  -t|--tag)
+    TAG_FILTER="$TAG_FILTER | grep -E '$2'"
+    shift # past argument
+    ;;
+  -T|--notag)
+    TAG_FILTER="$TAG_FILTER | grep -Ev '$2'"
+    shift # past argument
+    ;;
+  -c|--convert)
+    CONVERT="$CONVERT -e 's$2'"
+	shift # past argument
+    ;;
+  -n|--dry-run)
+	DRYRUN=1
+    ;;
+   -v|--verbose)
+    OUTPUTFILTER='cat'
+    ;;
+  -h|--help)
+	show_usage
+	exit
+	;;
+  *)
+    if [ -z "$SRCREGISTRY" ]; then
+      SRCREGISTRY="$1"
+    elif [ -z "$DESTREGISTRY" ]; then
+      DESTREGISTRY="$1"
+    else
+      show_usage
+      exit 1
+	fi
+    ;;
+  esac
+  shift # past argument or value
+done
+
+if [ -z "$SRCREGISTRY" -o -z "$DESTREGISTRY" ]; then
+  show_usage
+  exit 1
+fi
+
+sync_images
