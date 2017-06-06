@@ -278,7 +278,6 @@ else case $1 in
   if [[ $# == 1 ]]; then
     setup $1
   else
-    shift
     run_docker "$@"
   fi
   ;;
