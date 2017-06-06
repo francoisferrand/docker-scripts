@@ -71,6 +71,7 @@ function setup {
   echo export DOCKER_HOST=$DOCKER_HOST \;
   echo export DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY \;
   echo export DOCKER_CERT_PATH=$DOCKER_CERT_PATH \;
+  echo export DOCKER_CMD=$DOCKER_CMD \;
   echo alias docker=$DOCKER_CMD \;
   echo echo "Docker environment setup for $DOCKER_HOST."
 }
@@ -80,6 +81,7 @@ function clear_env {
   echo unset DOCKER_HOST \;
   echo unset DOCKER_TLS_VERIFY \;
   echo unset DOCKER_CERT_PATH \;
+  echo unset DOCKER_CMD \;
   echo unalias docker \;
   echo echo "Docker environment cleared."
 }
@@ -87,7 +89,7 @@ function clear_env {
 function run_docker {
   eval $(setup $1)
   shift
-  exec docker "$*" 
+  exec $DOCKER_CMD "$*"
 }
 
 function list_envs {
