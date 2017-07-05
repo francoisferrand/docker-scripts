@@ -123,7 +123,7 @@ function download_client {
       curl -q $URL -o $docker_binary
 	  chmod +x $docker_binary
     else
-      curl -q ${URL}.tgz | tar xz --strip-components=1 docker/docker -O > $docker_binary
+      curl -q ${URL}.tgz | tar xz -O --strip-components=1 docker/docker > $docker_binary
 	  chmod +x $docker_binary
     fi
   fi
