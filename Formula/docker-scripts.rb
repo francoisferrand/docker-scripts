@@ -3,13 +3,13 @@ class DockerScripts < Formula
   homepage "https://github.com/Typz/docker-scripts"
   #version "1.0.0"
 
-  head do
-    url "https://github.com/Typz/docker-scripts.git"
-  end
+  head "https://github.com/Typz/docker-scripts.git"
 
   def install
 	bin.install "docker-certs"
 	bin.install "docker-env"
 	bin.install "docker-copy-images"
+
+	bash_completion.install "completion/docker-env.bash" => "docker-env"
   end
 end
