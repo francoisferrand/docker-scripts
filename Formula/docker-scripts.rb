@@ -1,7 +1,9 @@
 class DockerScripts < Formula
   desc "A collection of scripts which simplify working with docker."
   homepage "https://github.com/Typz/docker-scripts"
-  #version "1.0.0"
+
+  url "https://github.com//Typz/docker-scripts.git", :tag => "1.0"
+  bottle :unneeded
 
   head "https://github.com/Typz/docker-scripts.git"
 
