@@ -18,9 +18,9 @@ HOST=$(hostname)
 DURATION=365
 
 function help() {
-	echo "Usage: docker-certs [<OPTIONS>] <HOSTNAME>"
+	echo "Usage: docker-certs [<OPTIONS>] <HOSTNAME> [<ALTERNATE_NAMES...>"
 	echo ""
-	echo "This tool will generate certificates to secure connection to Docker daemon, as docuement"
+	echo "This tool will generate certificates to secure connection to Docker daemon, as documented"
 	echo "here: https://docs.docker.com/engine/security/https/"
 	echo ""
 	echo "Options"
@@ -91,13 +91,18 @@ function createServerCert() {
 }
 
 function getAltNames() {
-	getent hosts $1 | awk '{ for (i=2; i<=NF; i++) printf "DNS:%s,", $i ; printf "IP:%s", $0 }'
+	for ALT_NAME in $ALT_NAMES ; do
+		printf "DNS:$ALT_NAME,"
+	done
+	getent hosts $1 | awk '{ for (i=2; i<=NF; i++) printf "DNS:%s,", $i ; printf "IP:%s", $1 }'
 }
 
 FORCE_CREATE_CA=
 CREATE_CLIENT=true
 CREATE_SERVER=true
 SWARM_NODE=
+ALT_NAMES=
+HOST=
 while [[ $# > 0 ]]; do
   case "$1" in
   -C) # Change working directory
@@ -136,7 +141,11 @@ while [[ $# > 0 ]]; do
 	help
 	;;
   *)
-	HOST=$1
+	if [ "$HOST" ]; then
+	  ALT_NAMES="$ALT_NAMES $1"
+	else
+	  HOST=$1
+	fi
 	;;
   esac
   shift
