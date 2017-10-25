@@ -46,9 +46,9 @@ function setup {
 
   # Setup docker host
   if [ -e $CONFIG_PATH/$HOST/DOCKER_HOST ]; then
-	DOCKER_HOST=$(cat $CONFIG_PATH/$HOST/DOCKER_HOST) 
+	DOCKER_HOST=$(cat $CONFIG_PATH/$HOST/DOCKER_HOST)
   else
-	DOCKER_HOST=$HOST:2376
+	DOCKER_HOST=tcp://$HOST:2376
   fi
 
   # Setup TLS
@@ -59,14 +59,14 @@ function setup {
     DOCKER_TLS_VERIFY=
 	DOCKER_CERT_PATH=
   fi
-  
+
   # Setup appropriate docker version
   if [ -x $CONFIG_PATH/$HOST/docker ]; then
     DOCKER_CMD=$CONFIG_PATH/$HOST/docker
   else
     DOCKER_CMD=$(which docker)
   fi
-  
+
   echo export DOCKER_MACHINE_NAME=$HOST \;
   echo export DOCKER_HOST=$DOCKER_HOST \;
   echo export DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY \;
@@ -99,8 +99,8 @@ function list_envs {
   done
 }
 
-function version { 
-  echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }'; 
+function version {
+  echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
 }
 
 # Usage
@@ -118,7 +118,7 @@ function download_client {
 
   # If not, download to ~/bin
   if [ ! -x $docker_binary ]; then
-    local URL="https://get.docker.com/builds/$(uname -s)/$(uname -m)/docker-$version"	
+    local URL="https://get.docker.com/builds/$(uname -s)/$(uname -m)/docker-$version"
 	if [ $(version $version) -lt $(version 1.11) ] ; then
       curl -q $URL -o $docker_binary
 	  chmod +x $docker_binary
@@ -180,12 +180,12 @@ function add_env {
     esac
     shift # past argument or value
   done
-  
+
   if [ -z $ENV_NAME ]; then
     echo "Environment name not specified" >&2
     help
   fi
-  
+
   mkdir -p $CONFIG_PATH/$ENV_NAME
   [ -z $DOCKER_HOST ] || echo $DOCKER_HOST > $CONFIG_PATH/$ENV_NAME/DOCKER_HOST
   [ -z $TLSKEY ] || cp $TLSKEY $CONFIG_PATH/$ENV_NAME/key.pem
@@ -232,7 +232,7 @@ function update_env {
 	rm -f $CONFIG_PATH/$ENV_NAME/docker
   else
     download_client $CONFIG_PATH/$ENV_NAME/docker $VERSION
-  fi 
+  fi
 }
 
 # Usage
@@ -248,7 +248,7 @@ else case $1 in
 --reset)
   clear_env
   ;;
-  
+
 --list|-l)
   list_envs
   ;;
