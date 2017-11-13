@@ -34,6 +34,18 @@ function get_env_version {
   $(DOCKER_CMD) -f {{.Server.Version}}
 }
 
+function resolve_host {
+  if [ "$(uname -s)" == "Darwin" ]; then
+    dscacheutil -q host -a name $1 | awk '{ if ($1 == "name:") printf "%s", $1 }'
+  else
+    getent hosts $1 | awk '{  printf "%s", $2 }'
+  fi
+}
+
+function docker_verify {
+    (DOCKER_CERT_PATH=$DOCKER_CERT_PATH DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY $1 -H $2 version >/dev/null) 2>&1
+}
+
 # Usage
 #   $1: environment name
 function setup {
@@ -67,13 +79,37 @@ function setup {
     DOCKER_CMD=$(which docker)
   fi
 
+  if ! ERROR=$(docker_verify $DOCKER_CMD $DOCKER_HOST); then
+    local ALTHOST=tcp://$(resolve_host $HOST):2376
+    local ALTCMD=$(which docker)
+    if docker_verify $DOCKER_CMD $ALTHOST > /dev/null; then
+      echo "Updated hostname to $ALTHOST" >&2
+      echo $ALTHOST > $CONFIG_PATH/$HOST/DOCKER_HOST
+      DOCKER_HOST=$ALTHOST
+    elif docker_verify $ALTCMD $DOCKER_HOST > /dev/null; then
+      echo "Updated docker to $ALTCMD" >&2
+      rm $CONFIG_PATH/$HOST/docker
+      DOCKER_CMD=$ALTCMD
+    elif docker_verify $ALTCMD $ALTHOST 2>&1 > /dev/null; then
+      echo "Updated hostname to $ALTHOST" >&2
+      echo "Updated docker to $ALTCMD" >&2
+      echo $ALTHOST > $CONFIG_PATH/$HOST/DOCKER_HOST
+      rm $CONFIG_PATH/$HOST/docker
+      DOCKER_CMD=$ALTCMD
+    else
+      echo "Failed to setup docker env '$HOST'" >&2
+      echo "$ERROR" >&2
+      return 1
+    fi
+  fi
+
   echo export DOCKER_MACHINE_NAME=$HOST \;
   echo export DOCKER_HOST=$DOCKER_HOST \;
   echo export DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY \;
   echo export DOCKER_CERT_PATH=$DOCKER_CERT_PATH \;
   echo export DOCKER_CMD=$DOCKER_CMD \;
   echo alias docker=$DOCKER_CMD \;
-  echo echo "Docker environment setup for $DOCKER_HOST."
+  echo echo "Docker environment setup for $HOST."
 }
 
 function clear_env {
