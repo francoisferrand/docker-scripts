@@ -123,7 +123,8 @@ function clear_env {
 }
 
 function run_docker {
-  eval $(setup $1)
+  SETUP_COMMANDS=$(setup $1)
+  eval $SETUP_COMMANDS
   shift
   exec $DOCKER_CMD "$@"
 }
