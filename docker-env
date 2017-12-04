@@ -18,6 +18,10 @@ function help {
   echo "   * Update docker client:   docker-env --update <env_name> [--version <docker version>]"
   echo "   * Delete environment      docker-env --rm <env_name>"
   echo "   * Run docker command:     docker-env <env_name> <docker_command> <docker_command_args...>"
+  echo ""
+  echo "When env is a docker swarm (standalone), a specific node can be targetted by specifying its"
+  echo "name after the name:"
+  echo "    docker-env <env_name>[/<node_name>] ..."
   exit 1
 }
 
@@ -49,27 +53,28 @@ function docker_verify {
 # Usage
 #   $1: environment name
 function setup {
-  local HOST=$1
+  local HOST=${1///*}
+  local SWARMNODE=${1#*/}
 
   if [ ! -d $CONFIG_PATH/$HOST ]; then
-	echo "Docker environment '$HOST' not found" >&2
-	exit 1
+    echo "Docker environment '$HOST' not found" >&2
+    exit 1
   fi
 
   # Setup docker host
   if [ -e $CONFIG_PATH/$HOST/DOCKER_HOST ]; then
-	DOCKER_HOST=$(cat $CONFIG_PATH/$HOST/DOCKER_HOST)
+    DOCKER_HOST=$(cat $CONFIG_PATH/$HOST/DOCKER_HOST)
   else
-	DOCKER_HOST=tcp://$HOST:2376
+    DOCKER_HOST=tcp://$HOST:2376
   fi
 
   # Setup TLS
   if [ -e $CONFIG_PATH/$HOST/key.pem ]; then
     DOCKER_TLS_VERIFY=1
-	DOCKER_CERT_PATH=$CONFIG_PATH/$HOST
+    DOCKER_CERT_PATH=$CONFIG_PATH/$HOST
   else
     DOCKER_TLS_VERIFY=
-	DOCKER_CERT_PATH=
+    DOCKER_CERT_PATH=
   fi
 
   # Setup appropriate docker version
@@ -97,6 +102,23 @@ function setup {
       rm $CONFIG_PATH/$HOST/docker
       DOCKER_CMD=$ALTCMD
     else
+      echo "Failed to setup docker env '$HOST'" >&2
+      echo "$ERROR" >&2
+      return 1
+    fi
+  fi
+
+  if [ $HOST != $SWARMNODE ]; then
+    # Run docker-info to find the hostname of the node
+    if ! SWARMHOST=$(DOCKER_CERT_PATH=$DOCKER_CERT_PATH DOCKER_TLS_VERIFY=$DOCKER_TLS_VERIFY $DOCKER_CMD -H $DOCKER_HOST info 2>/dev/null |\
+                     grep $SWARMNODE | grep -v 'ID:' | awk '{print $2}'); then
+      echo "Failed to find slave '$SWARMNODE' on '$HOST'" >&2
+      return 1
+    fi
+
+    HOST="$SWARMNODE"
+    DOCKER_HOST="tcp://$SWARMHOST"
+    if ! ERROR=$(docker_verify $DOCKER_CMD $DOCKER_HOST); then
       echo "Failed to setup docker env '$HOST'" >&2
       echo "$ERROR" >&2
       return 1
