@@ -125,7 +125,7 @@ function clear_env {
 function run_docker {
   eval $(setup $1)
   shift
-  exec $DOCKER_CMD "$*"
+  exec $DOCKER_CMD "$@"
 }
 
 function list_envs {
