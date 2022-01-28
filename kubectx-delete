@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+
+set +e
+
+#
+# Simple script to remove entries from kube config related to remote server.
+#
+#   delete-kube-context.sh <cluster-name|context-name|host> [<config-file>]
+#
+
+if [[ $# == 0 ]] || [ "$1" = -h ] || [ "$1" == "--help" ]; then
+  echo "Usage:"
+  echo "   $0 <cluster-name|context-name|host> [<config-file>]"
+  echo ""
+  echo "Remove clusters/contexts from the Kube config file."
+  echo "It is possible to specify either the name of the cluster, the name of the context, or the"
+  echo "host (as setup in the cluster's URL)."
+  echo ""
+  echo "* When removing a cluster, all contexts using it will be removed, as well as all users used"
+  echo "only for connecting to this cluster."
+  echo "* When removing a context, the associated user and cluster will be removed if they are not"
+  echo "used for other contexts."
+  echo ""
+  echo "The specified config file is updated, or ${HOME}/.kube/config if no file is specified."
+  exit 1
+fi
+
+KUBECONFIG=${2:-${HOME}/.kube/config}
+DRYRUN=
+
+function kubeconfig {
+    yq eval "$@" "$KUBECONFIG" 2>/dev/null
+}
+
+# Delete context
+# $1 : name of the context
+function delete_context {
+    $DRYRUN kubectl config delete-context "$1"
+}
+
+# Delete a cluster, and all contexts associated with it
+# $1 : name of the cluster
+function delete_cluster {
+    local CLUSTER="$1"
+    local CONTEXT
+    for CONTEXT in $(kubeconfig ".contexts[] | select(.context.cluster == \"$CLUSTER\").name"); do
+        delete_context "$CONTEXT"
+    done
+    $DRYRUN kubectl config delete-cluster "$CLUSTER"
+}
+
+# find what to delete ($1)
+# - name of cluster
+# - name of server
+# - IP of server
+if kubeconfig -e ".contexts[] | select(.name == \"$1\")" >/dev/null ; then
+    # delete specified context
+    $DRYRUN kubectl config delete-context "$1"
+elif kubeconfig -e ".clusters[] | select(.name == \"$1\")" >/dev/null ; then
+    # delete all contexts related to the cluster w/ this name
+    delete_cluster "$1"
+elif CLUSTERS="$(kubeconfig -e ".clusters[] | select(.cluster.server == \"*$1*\").name")" ; then
+    # delete all contexts related to this cluster(s)
+    for CLUSTER in $CLUSTERS ; do
+        delete_cluster "$CLUSTER"
+    done
+else
+    echo "No cluster, context or host found for '$1'" >&2
+    exit 1
+fi
+
+# delete clusters which are not used anymore
+for CLUSTER in $(kubeconfig ".clusters[].name") ; do
+    if ! kubeconfig -e ".contexts[] | select(.context.cluster == \"$CLUSTER\")" >/dev/null ; then
+        $DRYRUN kubectl config delete-cluster "$CLUSTER"
+    fi
+done
+
+# delete users which are not used anymore
+for USER in $(kubeconfig ".users[].name") ; do
+    if ! kubeconfig -e ".contexts[] | select(.context.user == \"$USER\")" >/dev/null ; then
+        $DRYRUN kubectl config delete-user "$USER"
+    fi
+done

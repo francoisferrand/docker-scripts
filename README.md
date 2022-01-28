@@ -8,6 +8,8 @@ configured hosts.
 * `docker-env` : allows managing docker hosts in a way similar to docker-machine.
 * `docker-certs` : allows generating SSL certificates for securing docker daemon.
 * `docker-copy-images` : allows bulk copying images from one registry to another.
+* `kubectx-delete` : allows to remove a cluster/context from the kube config file.
+* `kubectx-import` : allows to import the kube config from a remote kubernetes host (via SSH).
 
 ## Installation
 

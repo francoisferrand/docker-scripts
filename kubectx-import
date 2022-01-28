@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set +e
+
+#
+# Simple script to import kube context from remote server.
+# - requires SSH connection to the remote server, possibly with password-less sudo
+# - config is merged with the existing Kubernetes config file (${HOME}/.kube/config)
+#
+
+if [[ $# == 0 ]] || [ "$1" = -h ] || [ "$1" == "--help" ]; then
+  echo "Usage:"
+  echo "   $0 <ssh-host> [<config-file>]"
+  echo ""
+  echo "Connect (via SSH) to the specified kubernetes host, and import the kube config locally."
+  echo "The config is merged into the config file specified in argument, or ${HOME}/.kube/config if"
+  echo "no file is specified."
+  exit 1
+fi
+
+HOSTNAME=$(ssh "$1" hostname -s)
+KUBECONFIGFILE=${2:-${HOME}/.kube/config}
+KUBEUSER="admin"
+
+CONF=$(mktemp "/tmp/$HOSTNAME-$KUBEUSER.conf.XXXX")
+trap 'rm -f "$CONF"' EXIT
+
+# TODO: check there is no 'conflict' with the destination file
+# TODO: replace 'sed' with yq, so it is easier to adjust to different user?
+ssh "$1" sudo cat /etc/kubernetes/$KUBEUSER.conf \
+    | sed -e "s/kubernetes-$KUBEUSER@kubernetes/$KUBEUSER@${HOSTNAME}/g" \
+          -e "s/kubernetes/${HOSTNAME}/g" \
+    > "$CONF"
+
+mv "${KUBECONFIGFILE}" "${KUBECONFIGFILE}.old"
+KUBECONFIG="${KUBECONFIGFILE}.old:$CONF" kubectl config view --raw > "${KUBECONFIGFILE}"
