@@ -23,7 +23,7 @@ configured hosts.
 * Add `Typz/docker-scripts` tap
 
 	```
-	brew tap Typz/docker-scripts https://github.com/Typz/docker-scripts.git
+	brew tap francoisferrand/docker-scripts https://github.com/francoisferrand/docker-scripts.git
 	```
 
 * Install `docker-scripts` package
